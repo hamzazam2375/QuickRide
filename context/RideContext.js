@@ -1,4 +1,11 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { useEffect, createContext, useContext, useMemo, useState } from 'react';
+import {
+	configureNotifications,
+	sendPaymentSuccessNotification,
+	sendRideAcceptedNotification,
+	sendRideCompletedNotification,
+	sendRideStartedNotification,
+} from '../services/notifications';
 
 const RideContext = createContext(null);
 
@@ -17,16 +24,36 @@ export function RideProvider({ children }) {
 	const [rideStatus, setRideStatus] = useState(RIDE_STATUSES.IDLE);
 	const [customerLocation, setCustomerLocation] = useState(null);
 	const [driverLocation, setDriverLocation] = useState(null);
+	const [pickupLocation, setPickupLocation] = useState('');
+	const [destination, setDestination] = useState('');
 
-	const requestRide = (ride = null, location = null) => {
-		if (ride !== null) {
-			setCurrentRide(ride);
-		}
+	useEffect(() => {
+		let isMounted = true;
 
-		if (location !== null) {
-			setCustomerLocation(location);
-		}
+		const prepareNotifications = async () => {
+			if (!isMounted) {
+				return;
+			}
 
+			// Request notification permissions once when app state provider mounts.
+			await configureNotifications().catch(() => undefined);
+		};
+
+		prepareNotifications();
+
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	const requestRide = (nextPickup, nextDestination) => {
+		setPickupLocation(nextPickup);
+		setDestination(nextDestination);
+		setCurrentRide({
+			id: `ride-${Date.now()}`,
+			pickupLocation: nextPickup,
+			destination: nextDestination,
+		});
 		setRideStatus(RIDE_STATUSES.REQUESTED);
 	};
 
@@ -40,18 +67,22 @@ export function RideProvider({ children }) {
 		}
 
 		setRideStatus(RIDE_STATUSES.ACCEPTED);
+		sendRideAcceptedNotification().catch(() => undefined);
 	};
 
 	const startRide = () => {
 		setRideStatus(RIDE_STATUSES.IN_PROGRESS);
+		sendRideStartedNotification().catch(() => undefined);
 	};
 
 	const completeRide = () => {
 		setRideStatus(RIDE_STATUSES.COMPLETED);
+		sendRideCompletedNotification().catch(() => undefined);
 	};
 
 	const markPaid = () => {
 		setRideStatus(RIDE_STATUSES.PAID);
+		sendPaymentSuccessNotification().catch(() => undefined);
 	};
 
 	const value = useMemo(
@@ -60,6 +91,8 @@ export function RideProvider({ children }) {
 			rideStatus,
 			customerLocation,
 			driverLocation,
+			pickupLocation,
+			destination,
 			requestRide,
 			acceptRide,
 			startRide,
@@ -69,8 +102,10 @@ export function RideProvider({ children }) {
 			setRideStatus,
 			setCustomerLocation,
 			setDriverLocation,
+			setPickupLocation,
+			setDestination,
 		}),
-		[currentRide, rideStatus, customerLocation, driverLocation],
+		[currentRide, rideStatus, customerLocation, driverLocation, pickupLocation, destination],
 	);
 
 	return <RideContext.Provider value={value}>{children}</RideContext.Provider>;

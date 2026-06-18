@@ -1,76 +1,75 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import * as Location from 'expo-location';
+import ActionButton from '../components/ActionButton';
+import RideCard from '../components/RideCard';
+import StatusBadge from '../components/StatusBadge';
 import { useRide, RIDE_STATUSES } from '../context/RideContext';
-
-const DEFAULT_REGION = {
-	latitude: 37.78825,
-	longitude: -122.4324,
-	latitudeDelta: 0.02,
-	longitudeDelta: 0.02,
-};
-
-const STATUS_STYLES = {
-	[RIDE_STATUSES.IDLE]: { backgroundColor: '#E2E8F0', color: '#0F172A' },
-	[RIDE_STATUSES.REQUESTED]: { backgroundColor: '#FEF3C7', color: '#92400E' },
-	[RIDE_STATUSES.ACCEPTED]: { backgroundColor: '#DBEAFE', color: '#1D4ED8' },
-	[RIDE_STATUSES.ARRIVING]: { backgroundColor: '#EDE9FE', color: '#6D28D9' },
-	[RIDE_STATUSES.IN_PROGRESS]: { backgroundColor: '#DCFCE7', color: '#166534' },
-	[RIDE_STATUSES.COMPLETED]: { backgroundColor: '#D1FAE5', color: '#065F46' },
-	[RIDE_STATUSES.PAID]: { backgroundColor: '#E0E7FF', color: '#3730A3' },
-};
+import {
+	DEFAULT_LOCATION_REGION,
+	buildRegionFromCoordinates,
+	startDeviceLocationUpdates,
+} from '../services/location';
 
 export default function CustomerDashboard({ navigation }) {
-	const { rideStatus, customerLocation, setCustomerLocation, requestRide, currentRide } = useRide();
+	const { rideStatus, customerLocation, setCustomerLocation, requestRide, currentRide, pickupLocation: storedPickupLocation, destination: storedDestination } = useRide();
 	const [locationPermission, setLocationPermission] = useState('loading');
-	const [mapRegion, setMapRegion] = useState(DEFAULT_REGION);
+	const [mapRegion, setMapRegion] = useState(DEFAULT_LOCATION_REGION);
+	const [pickupLocation, setPickupLocation] = useState(storedPickupLocation || '');
+	const [destination, setDestination] = useState(storedDestination || '');
+	const [isPickupEdited, setIsPickupEdited] = useState(Boolean(storedPickupLocation));
 
 	useEffect(() => {
 		let isMounted = true;
+		let subscription = null;
 
 		const loadLocation = async () => {
-			const permission = await Location.requestForegroundPermissionsAsync();
+			const locationSession = await startDeviceLocationUpdates((nextLocation) => {
+				if (!isMounted) {
+					return;
+				}
+
+				setCustomerLocation(nextLocation);
+				setMapRegion(buildRegionFromCoordinates(nextLocation));
+			});
 
 			if (!isMounted) {
+				if (locationSession.subscription) {
+					locationSession.subscription.remove();
+				}
 				return;
 			}
 
-			if (permission.status !== 'granted') {
+			if (!locationSession.permissionGranted) {
 				setLocationPermission('denied');
 				return;
 			}
 
 			setLocationPermission('granted');
-			const position = await Location.getCurrentPositionAsync({
-				accuracy: Location.Accuracy.Balanced,
-			});
-
-			if (!isMounted) {
-				return;
-			}
-
-			const nextLocation = {
-				latitude: position.coords.latitude,
-				longitude: position.coords.longitude,
-			};
-
-			setCustomerLocation(nextLocation);
-			setMapRegion({
-				...nextLocation,
-				latitudeDelta: 0.02,
-				longitudeDelta: 0.02,
-			});
+			setCustomerLocation(locationSession.location);
+			setMapRegion(buildRegionFromCoordinates(locationSession.location));
+			subscription = locationSession.subscription;
 		};
 
 		loadLocation();
 
 		return () => {
 			isMounted = false;
+			if (subscription) {
+				subscription.remove();
+			}
 		};
 	}, [setCustomerLocation]);
 
-	const statusStyle = STATUS_STYLES[rideStatus] ?? STATUS_STYLES[RIDE_STATUSES.IDLE];
+	useEffect(() => {
+		if (!customerLocation || isPickupEdited) {
+			return;
+		}
+
+		const coordinatesValue = `${customerLocation.latitude.toFixed(5)}, ${customerLocation.longitude.toFixed(5)}`;
+		setPickupLocation(coordinatesValue);
+	}, [customerLocation, isPickupEdited]);
+
 	const coordinatesLabel = useMemo(() => {
 		if (!customerLocation) {
 			return 'Waiting for live coordinates...';
@@ -79,23 +78,18 @@ export default function CustomerDashboard({ navigation }) {
 		return `${customerLocation.latitude.toFixed(5)}, ${customerLocation.longitude.toFixed(5)}`;
 	}, [customerLocation]);
 
+	const isPickupValid = pickupLocation.trim().length > 0;
+	const isDestinationValid = destination.trim().length > 0;
+	const bookButtonDisabled = rideStatus !== RIDE_STATUSES.IDLE || !isPickupValid || !isDestinationValid;
+
 	const handleBookRide = () => {
-		if (rideStatus !== RIDE_STATUSES.IDLE) {
+		if (bookButtonDisabled) {
 			return;
 		}
 
-		requestRide(
-			{
-				id: `ride-${Date.now()}`,
-				createdAt: Date.now(),
-				type: 'customer-request',
-			},
-			customerLocation,
-		);
+		requestRide(pickupLocation.trim(), destination.trim());
 		navigation.navigate('Checkout');
 	};
-
-	const bookButtonDisabled = rideStatus !== RIDE_STATUSES.IDLE;
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
@@ -105,66 +99,74 @@ export default function CustomerDashboard({ navigation }) {
 					<Text style={styles.subtitle}>Track your position, review your ride state, and start a new booking.</Text>
 				</View>
 
-				<View style={styles.card}>
-					<View style={styles.rowBetween}>
-						<Text style={styles.sectionLabel}>Current ride status</Text>
-						<View style={[styles.badge, { backgroundColor: statusStyle.backgroundColor }]}>
-							<Text style={[styles.badgeText, { color: statusStyle.color }]}>{rideStatus}</Text>
-						</View>
-					</View>
-					<Text style={styles.helperText}>
-						{currentRide ? 'A ride request is being tracked globally.' : 'No ride has been requested yet.'}
-					</Text>
-				</View>
-
-				<View style={styles.mapCard}>
-					<View style={styles.rowBetween}>
-						<Text style={styles.sectionLabel}>Live map</Text>
-						<Text style={styles.mapHint}>
-							{locationPermission === 'denied' ? 'Permission required' : 'Customer location'}
+					<RideCard
+						title="Current ride status"
+						rightElement={<StatusBadge status={rideStatus} />}
+					>
+						<Text style={styles.helperText}>
+							{currentRide ? 'A ride request is being tracked globally.' : 'No ride has been requested yet.'}
 						</Text>
-					</View>
+					</RideCard>
+
+					<RideCard title="Pickup Location" subtitle="Automatically populated from your current coordinates when available.">
+					<TextInput
+						value={pickupLocation}
+						onChangeText={(value) => {
+							setPickupLocation(value);
+							setIsPickupEdited(true);
+						}}
+						placeholder="Use current coordinates or edit pickup"
+						placeholderTextColor="#94A3B8"
+						style={styles.input}
+					/>
+				</RideCard>
+
+				<RideCard title="Destination" subtitle="Destination field is required to book the ride.">
+					<TextInput
+						value={destination}
+						onChangeText={setDestination}
+						placeholder="Enter destination"
+						placeholderTextColor="#94A3B8"
+						style={styles.input}
+					/>
+				</RideCard>
+
+				<RideCard
+					title="Live map"
+					subtitle={locationPermission === 'denied' ? 'Permission required' : 'Customer location'}
+				>
 					<View style={styles.mapFrame}>
+						<MapView style={styles.map} region={mapRegion}>
+							{customerLocation ? (
+								<Marker coordinate={customerLocation} title="You are here" description="Customer location" />
+							) : null}
+						</MapView>
 						{locationPermission === 'denied' ? (
-							<View style={styles.permissionCard}>
-								<Text style={styles.permissionTitle}>Location access is off</Text>
-								<Text style={styles.permissionText}>
-									Enable location permission to preview your position on the map.
-								</Text>
+							<View style={styles.permissionOverlay} pointerEvents="none">
+								<View style={styles.permissionCard}>
+									<Text style={styles.permissionTitle}>Location access is off</Text>
+									<Text style={styles.permissionText}>
+										Enable location permission to preview your position on the map.
+									</Text>
+								</View>
 							</View>
-						) : (
-							<MapView style={styles.map} region={mapRegion}>
-								{customerLocation ? (
-									<Marker coordinate={customerLocation} title="You are here" />
-								) : null}
-							</MapView>
-						)}
+						) : null}
 					</View>
-				</View>
+				</RideCard>
 
-				<View style={styles.card}>
-					<View style={styles.rowBetween}>
-						<Text style={styles.sectionLabel}>Current coordinates</Text>
-						<Text style={styles.mapHint}>
-							{locationPermission === 'loading' ? 'Loading' : 'Live'}
-						</Text>
-					</View>
+				<RideCard title="Current coordinates" subtitle={locationPermission === 'loading' ? 'Loading' : 'Live'}>
 					<Text style={styles.coordinates}>{coordinatesLabel}</Text>
-				</View>
+				</RideCard>
 
-				<Pressable
+				<RideCard title="Booking details" subtitle="Pickup and destination are required to book a ride.">
+					<Text style={styles.helperText}>Edit the pickup if needed, then continue to checkout.</Text>
+				</RideCard>
+
+				<ActionButton
+					label={bookButtonDisabled ? 'Ride already requested' : 'Book Ride'}
 					onPress={handleBookRide}
 					disabled={bookButtonDisabled}
-					style={({ pressed }) => [
-						styles.bookButton,
-						bookButtonDisabled && styles.bookButtonDisabled,
-						pressed && !bookButtonDisabled && styles.bookButtonPressed,
-					]}
-				>
-					<Text style={styles.bookButtonText}>
-						{bookButtonDisabled ? 'Ride already requested' : 'Book Ride'}
-					</Text>
-				</Pressable>
+				/>
 			</View>
 		</SafeAreaView>
 	);
@@ -198,59 +200,13 @@ const styles = StyleSheet.create({
 		lineHeight: 24,
 		color: '#64748B',
 	},
-	card: {
-		backgroundColor: '#FFFFFF',
-		borderRadius: 22,
-		padding: 16,
-		shadowColor: '#0F172A',
-		shadowOpacity: 0.06,
-		shadowRadius: 18,
-		shadowOffset: { width: 0, height: 10 },
-		elevation: 3,
-	},
-	mapCard: {
-		backgroundColor: '#FFFFFF',
-		borderRadius: 22,
-		padding: 16,
-		shadowColor: '#0F172A',
-		shadowOpacity: 0.06,
-		shadowRadius: 18,
-		shadowOffset: { width: 0, height: 10 },
-		elevation: 3,
-	},
-	rowBetween: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-		gap: 12,
-	},
-	sectionLabel: {
-		fontSize: 16,
-		fontWeight: '700',
-		color: '#0F172A',
-	},
-	badge: {
-		paddingHorizontal: 12,
-		paddingVertical: 8,
-		borderRadius: 999,
-	},
-	badgeText: {
-		fontSize: 13,
-		fontWeight: '700',
-	},
 	helperText: {
-		marginTop: 10,
 		fontSize: 14,
 		lineHeight: 22,
 		color: '#64748B',
 	},
-	mapHint: {
-		fontSize: 13,
-		fontWeight: '600',
-		color: '#94A3B8',
-	},
 	mapFrame: {
-		marginTop: 14,
+		marginTop: 10,
 		height: 230,
 		borderRadius: 18,
 		overflow: 'hidden',
@@ -265,6 +221,10 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		alignItems: 'center',
 	},
+	permissionOverlay: {
+		...StyleSheet.absoluteFillObject,
+		backgroundColor: 'rgba(247, 249, 252, 0.78)',
+	},
 	permissionTitle: {
 		fontSize: 16,
 		fontWeight: '700',
@@ -277,29 +237,21 @@ const styles = StyleSheet.create({
 		color: '#64748B',
 		textAlign: 'center',
 	},
-	coordinates: {
+	input: {
 		marginTop: 10,
+		borderWidth: 1,
+		borderColor: '#E2E8F0',
+		borderRadius: 16,
+		paddingHorizontal: 14,
+		paddingVertical: 13,
+		fontSize: 15,
+		color: '#0F172A',
+		backgroundColor: '#F8FAFC',
+	},
+	coordinates: {
 		fontSize: 15,
 		lineHeight: 22,
 		fontWeight: '600',
 		color: '#0F172A',
-	},
-	bookButton: {
-		backgroundColor: '#111827',
-		paddingVertical: 16,
-		borderRadius: 18,
-		alignItems: 'center',
-	},
-	bookButtonDisabled: {
-		opacity: 0.55,
-	},
-	bookButtonPressed: {
-		opacity: 0.9,
-		transform: [{ scale: 0.99 }],
-	},
-	bookButtonText: {
-		fontSize: 16,
-		fontWeight: '700',
-		color: '#FFFFFF',
 	},
 });
