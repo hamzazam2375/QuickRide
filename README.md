@@ -37,7 +37,3 @@ Then open on:
 - Android emulator/device
 - iOS simulator/device
 - Expo Go (for quick testing)
-
-## Notes
-
-- For notification permission prompts showing the app name instead of Expo Go, use a development build or production build.
