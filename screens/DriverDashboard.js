@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
 import RideCard from '../components/RideCard';
 import StatusBadge from '../components/StatusBadge';
@@ -90,7 +91,7 @@ export default function DriverDashboard({ navigation }) {
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.container}>
+			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Driver Dashboard</Text>
 					<Text style={styles.subtitle}>Monitor your position and manage the current ride from one place.</Text>
@@ -136,7 +137,7 @@ export default function DriverDashboard({ navigation }) {
 						<Text style={styles.idleText}>Waiting for ride activity.</Text>
 					</RideCard>
 				)}
-			</View>
+			</ScrollView>
 		</SafeAreaView>
 	);
 }
@@ -147,7 +148,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F7F9FC',
 	},
 	container: {
-		flex: 1,
+		flexGrow: 1,
 		paddingHorizontal: 20,
 		paddingTop: 16,
 		paddingBottom: 24,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
 import RideCard from '../components/RideCard';
 import StatusBadge from '../components/StatusBadge';
@@ -93,7 +94,7 @@ export default function CustomerDashboard({ navigation }) {
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.container}>
+			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Customer Dashboard</Text>
 					<Text style={styles.subtitle}>Track your position, review your ride state, and start a new booking.</Text>
@@ -167,7 +168,7 @@ export default function CustomerDashboard({ navigation }) {
 					onPress={handleBookRide}
 					disabled={bookButtonDisabled}
 				/>
-			</View>
+			</ScrollView>
 		</SafeAreaView>
 	);
 }
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F7F9FC',
 	},
 	container: {
-		flex: 1,
+		flexGrow: 1,
 		paddingHorizontal: 20,
 		paddingTop: 16,
 		paddingBottom: 24,

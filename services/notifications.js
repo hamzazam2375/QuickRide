@@ -1,16 +1,32 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
-Notifications.setNotificationHandler({
-	handleNotification: async () => ({
-		shouldShowAlert: true,
-		shouldPlaySound: false,
-		shouldSetBadge: false,
-	}),
-});
+const isExpoGo =
+	Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
+
+let Notifications = null;
+
+if (!isExpoGo) {
+	try {
+		Notifications = require('expo-notifications');
+		Notifications.setNotificationHandler({
+			handleNotification: async () => ({
+				shouldShowAlert: true,
+				shouldPlaySound: false,
+				shouldSetBadge: false,
+			}),
+		});
+	} catch {
+		Notifications = null;
+	}
+}
 
 let permissionPromise = null;
 
 async function ensureNotificationPermissions() {
+	if (!Notifications || isExpoGo) {
+		return false;
+	}
+
 	if (!permissionPromise) {
 		permissionPromise = (async () => {
 			const existingPermissions = await Notifications.getPermissionsAsync();

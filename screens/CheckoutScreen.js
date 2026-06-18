@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import ActionButton from '../components/ActionButton';
 import RideCard from '../components/RideCard';
 import StatusBadge from '../components/StatusBadge';
 import { useRide, RIDE_STATUSES } from '../context/RideContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const FLOW_STEPS = [
 	RIDE_STATUSES.REQUESTED,
@@ -48,7 +49,7 @@ export default function CheckoutScreen({ navigation }) {
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.container}>
+			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Checkout</Text>
 					<Text style={styles.subtitle}>Review the ride summary and complete the payment.</Text>
@@ -105,7 +106,7 @@ export default function CheckoutScreen({ navigation }) {
 				{paymentCompleted ? (
 					<ActionButton label="Return to Dashboard" onPress={handleReturnToDashboard} />
 				) : null}
-			</View>
+			</ScrollView>
 		</SafeAreaView>
 	);
 }
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F7F9FC',
 	},
 	container: {
-		flex: 1,
+		flexGrow: 1,
 		paddingHorizontal: 20,
 		paddingTop: 16,
 		paddingBottom: 24,

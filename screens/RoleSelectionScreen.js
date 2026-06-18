@@ -1,9 +1,10 @@
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function RoleSelectionScreen({ navigation }) {
 	return (
 		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.container}>
+			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 				<View style={styles.hero}>
 					<Text style={styles.title}>QuickRide</Text>
 					<Text style={styles.subtitle}>
@@ -26,7 +27,7 @@ export default function RoleSelectionScreen({ navigation }) {
 						<Text style={styles.secondaryButtonText}>Continue as Driver</Text>
 					</Pressable>
 				</View>
-			</View>
+			</ScrollView>
 		</SafeAreaView>
 	);
 }
@@ -37,7 +38,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F7F9FC',
 	},
 	container: {
-		flex: 1,
+		flexGrow: 1,
 		paddingHorizontal: 24,
 		paddingVertical: 32,
 		justifyContent: 'center',
