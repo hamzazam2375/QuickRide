@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
 import RideCard from '../components/RideCard';
@@ -11,11 +11,27 @@ import {
 	buildRegionFromCoordinates,
 	startDeviceLocationUpdates,
 } from '../services/location';
+import { getRoute } from '../services/geocoding';
 
 export default function DriverDashboard({ navigation }) {
-	const { rideStatus, driverLocation, setDriverLocation, currentRide, acceptRide, startRide, completeRide } = useRide();
+	const {
+		rideStatus,
+		driverLocation,
+		setDriverLocation,
+		currentRide,
+		acceptRide,
+		startRide,
+		completeRide,
+		destination,
+		pickupLocation,
+		destinationCoords,
+		customerLocation,
+	} = useRide();
+
 	const [locationPermission, setLocationPermission] = useState('loading');
 	const [mapRegion, setMapRegion] = useState(DEFAULT_LOCATION_REGION);
+	const [routeCoordinates, setRouteCoordinates] = useState([]);
+	const mapRef = useMemo(() => ({ current: null }), []);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -28,7 +44,9 @@ export default function DriverDashboard({ navigation }) {
 				}
 
 				setDriverLocation(nextLocation);
-				setMapRegion(buildRegionFromCoordinates(nextLocation));
+				if (!destinationCoords) {
+					setMapRegion(buildRegionFromCoordinates(nextLocation));
+				}
 			});
 
 			if (!isMounted) {
@@ -45,7 +63,9 @@ export default function DriverDashboard({ navigation }) {
 
 			setLocationPermission('granted');
 			setDriverLocation(locationSession.location);
-			setMapRegion(buildRegionFromCoordinates(locationSession.location));
+			if (!destinationCoords) {
+				setMapRegion(buildRegionFromCoordinates(locationSession.location));
+			}
 			subscription = locationSession.subscription;
 		};
 
@@ -58,6 +78,51 @@ export default function DriverDashboard({ navigation }) {
 			}
 		};
 	}, [setDriverLocation]);
+
+	// Fetch route on driver map when ride has a destination
+	useEffect(() => {
+		let cancelled = false;
+
+		const fetchRoute = async () => {
+			if (!driverLocation || !destinationCoords) {
+				setRouteCoordinates([]);
+				return;
+			}
+
+			try {
+				const route = await getRoute(driverLocation, {
+					latitude: destinationCoords.lat,
+					longitude: destinationCoords.lon,
+				});
+
+				if (!cancelled && route.length > 0) {
+					setRouteCoordinates(route);
+
+					if (mapRef.current) {
+						const allPoints = [
+							driverLocation,
+							{ latitude: destinationCoords.lat, longitude: destinationCoords.lon },
+							...route,
+						];
+						mapRef.current.fitToCoordinates(allPoints, {
+							edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+							animated: true,
+						});
+					}
+				}
+			} catch {
+				if (!cancelled) {
+					setRouteCoordinates([]);
+				}
+			}
+		};
+
+		fetchRoute();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [driverLocation, destinationCoords]);
 
 	const coordinatesLabel = useMemo(() => {
 		if (!driverLocation) {
@@ -89,6 +154,8 @@ export default function DriverDashboard({ navigation }) {
 					? { label: 'Complete Ride', onPress: handleCompleteRide }
 					: null;
 
+	const hasRideInfo = rideStatus !== RIDE_STATUSES.IDLE && (pickupLocation || destination);
+
 	return (
 		<SafeAreaView style={styles.safeArea}>
 			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -103,14 +170,69 @@ export default function DriverDashboard({ navigation }) {
 					</Text>
 				</RideCard>
 
+				{hasRideInfo ? (
+					<RideCard title="Ride details" subtitle="Customer's pickup and destination">
+						{pickupLocation ? (
+							<View style={styles.detailBlock}>
+								<Text style={styles.detailLabel}>PICKUP</Text>
+								<Text style={styles.detailValue} numberOfLines={2}>{pickupLocation}</Text>
+							</View>
+						) : null}
+						{destination ? (
+							<View style={styles.detailBlock}>
+								<Text style={styles.detailLabel}>DESTINATION</Text>
+								<Text style={styles.detailValue} numberOfLines={2}>{destination}</Text>
+							</View>
+						) : null}
+						{destinationCoords ? (
+							<View style={styles.coordsBadge}>
+								<Text style={styles.coordsBadgeText}>
+									📍 {destinationCoords.lat.toFixed(4)}, {destinationCoords.lon.toFixed(4)}
+								</Text>
+							</View>
+						) : null}
+					</RideCard>
+				) : null}
+
 				<RideCard
 					title="Live map"
-					subtitle={locationPermission === 'denied' ? 'Permission required' : 'Driver location'}
+					subtitle={locationPermission === 'denied' ? 'Permission required' : routeCoordinates.length > 0 ? 'Route to destination' : 'Driver location'}
 				>
 					<View style={styles.mapFrame}>
-						<MapView style={styles.map} region={mapRegion}>
+						<MapView
+							ref={(ref) => { mapRef.current = ref; }}
+							style={styles.map}
+							region={mapRegion}
+						>
 							{driverLocation ? (
-								<Marker coordinate={driverLocation} title="Driver location" description="Driver position" />
+								<Marker coordinate={driverLocation} title="Driver location" description="Driver position" pinColor="#111827" />
+							) : null}
+
+							{destinationCoords ? (
+								<Marker
+									coordinate={{ latitude: destinationCoords.lat, longitude: destinationCoords.lon }}
+									title="Destination"
+									description={destination}
+									pinColor="#DC2626"
+								/>
+							) : null}
+
+							{customerLocation ? (
+								<Marker
+									coordinate={customerLocation}
+									title="Customer"
+									description="Pickup location"
+									pinColor="#3B82F6"
+								/>
+							) : null}
+
+							{routeCoordinates.length > 0 ? (
+								<Polyline
+									coordinates={routeCoordinates}
+									strokeColor="#3B82F6"
+									strokeWidth={4}
+									lineDashPattern={[0]}
+								/>
 							) : null}
 						</MapView>
 						{locationPermission === 'denied' ? (
@@ -175,9 +297,38 @@ const styles = StyleSheet.create({
 		lineHeight: 22,
 		color: '#64748B',
 	},
+	detailBlock: {
+		marginTop: 12,
+	},
+	detailLabel: {
+		fontSize: 11,
+		fontWeight: '700',
+		color: '#94A3B8',
+		textTransform: 'uppercase',
+		letterSpacing: 0.8,
+		marginBottom: 4,
+	},
+	detailValue: {
+		fontSize: 15,
+		lineHeight: 22,
+		color: '#0F172A',
+		fontWeight: '500',
+	},
+	coordsBadge: {
+		marginTop: 10,
+		backgroundColor: '#EFF6FF',
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderRadius: 12,
+	},
+	coordsBadgeText: {
+		fontSize: 13,
+		color: '#1D4ED8',
+		fontWeight: '600',
+	},
 	mapFrame: {
 		marginTop: 10,
-		height: 230,
+		height: 280,
 		borderRadius: 18,
 		overflow: 'hidden',
 		backgroundColor: '#E2E8F0',

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
+import PlaceAutocomplete from '../components/PlaceAutocomplete';
 import RideCard from '../components/RideCard';
 import StatusBadge from '../components/StatusBadge';
 import { useRide, RIDE_STATUSES } from '../context/RideContext';
@@ -11,14 +12,31 @@ import {
 	buildRegionFromCoordinates,
 	startDeviceLocationUpdates,
 } from '../services/location';
+import { getRoute } from '../services/geocoding';
 
 export default function CustomerDashboard({ navigation }) {
-	const { rideStatus, customerLocation, setCustomerLocation, requestRide, currentRide, pickupLocation: storedPickupLocation, destination: storedDestination } = useRide();
+	const {
+		rideStatus,
+		customerLocation,
+		setCustomerLocation,
+		requestRide,
+		currentRide,
+		pickupLocation: storedPickupLocation,
+		destination: storedDestination,
+		destinationCoords: storedDestinationCoords,
+		setDestinationCoords,
+	} = useRide();
+
 	const [locationPermission, setLocationPermission] = useState('loading');
 	const [mapRegion, setMapRegion] = useState(DEFAULT_LOCATION_REGION);
 	const [pickupLocation, setPickupLocation] = useState(storedPickupLocation || '');
 	const [destination, setDestination] = useState(storedDestination || '');
 	const [isPickupEdited, setIsPickupEdited] = useState(Boolean(storedPickupLocation));
+
+	const [destCoords, setDestCoords] = useState(storedDestinationCoords || null);
+	const [routeCoordinates, setRouteCoordinates] = useState([]);
+
+	const mapRef = useRef(null);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -31,7 +49,10 @@ export default function CustomerDashboard({ navigation }) {
 				}
 
 				setCustomerLocation(nextLocation);
-				setMapRegion(buildRegionFromCoordinates(nextLocation));
+				// Only update region if there's no route (route has its own fitToCoordinates)
+				if (!destCoords) {
+					setMapRegion(buildRegionFromCoordinates(nextLocation));
+				}
 			});
 
 			if (!isMounted) {
@@ -48,7 +69,9 @@ export default function CustomerDashboard({ navigation }) {
 
 			setLocationPermission('granted');
 			setCustomerLocation(locationSession.location);
-			setMapRegion(buildRegionFromCoordinates(locationSession.location));
+			if (!destCoords) {
+				setMapRegion(buildRegionFromCoordinates(locationSession.location));
+			}
 			subscription = locationSession.subscription;
 		};
 
@@ -71,6 +94,52 @@ export default function CustomerDashboard({ navigation }) {
 		setPickupLocation(coordinatesValue);
 	}, [customerLocation, isPickupEdited]);
 
+	// Fetch route when both pickup and destination coordinates are available
+	useEffect(() => {
+		let cancelled = false;
+
+		const fetchRoute = async () => {
+			if (!customerLocation || !destCoords) {
+				setRouteCoordinates([]);
+				return;
+			}
+
+			try {
+				const route = await getRoute(customerLocation, {
+					latitude: destCoords.lat,
+					longitude: destCoords.lon,
+				});
+
+				if (!cancelled && route.length > 0) {
+					setRouteCoordinates(route);
+
+					// Fit the map to show the full route
+					if (mapRef.current) {
+						const allPoints = [
+							customerLocation,
+							{ latitude: destCoords.lat, longitude: destCoords.lon },
+							...route,
+						];
+						mapRef.current.fitToCoordinates(allPoints, {
+							edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+							animated: true,
+						});
+					}
+				}
+			} catch {
+				if (!cancelled) {
+					setRouteCoordinates([]);
+				}
+			}
+		};
+
+		fetchRoute();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [customerLocation, destCoords]);
+
 	const coordinatesLabel = useMemo(() => {
 		if (!customerLocation) {
 			return 'Waiting for live coordinates...';
@@ -83,18 +152,36 @@ export default function CustomerDashboard({ navigation }) {
 	const isDestinationValid = destination.trim().length > 0;
 	const bookButtonDisabled = rideStatus !== RIDE_STATUSES.IDLE || !isPickupValid || !isDestinationValid;
 
+	const handlePlaceSelected = useCallback(
+		(place) => {
+			const coords = { lat: place.lat, lon: place.lon };
+			setDestCoords(coords);
+			setDestinationCoords(coords);
+		},
+		[setDestinationCoords],
+	);
+
+	const handleDestinationChange = useCallback((text) => {
+		setDestination(text);
+		// Clear destination coordinates if user starts typing again
+		if (text.length < 2) {
+			setDestCoords(null);
+			setRouteCoordinates([]);
+		}
+	}, []);
+
 	const handleBookRide = () => {
 		if (bookButtonDisabled) {
 			return;
 		}
 
-		requestRide(pickupLocation.trim(), destination.trim());
+		requestRide(pickupLocation.trim(), destination.trim(), destCoords);
 		navigation.navigate('Checkout');
 	};
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
-			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Customer Dashboard</Text>
 					<Text style={styles.subtitle}>Track your position, review your ride state, and start a new booking.</Text>
@@ -122,24 +209,48 @@ export default function CustomerDashboard({ navigation }) {
 					/>
 				</RideCard>
 
-				<RideCard title="Destination" subtitle="Destination field is required to book the ride.">
-					<TextInput
+				<RideCard title="Destination" subtitle="Search for a place to set as your destination.">
+					<PlaceAutocomplete
 						value={destination}
-						onChangeText={setDestination}
-						placeholder="Enter destination"
-						placeholderTextColor="#94A3B8"
-						style={styles.input}
+						onChangeText={handleDestinationChange}
+						onPlaceSelected={handlePlaceSelected}
+						placeholder="Search destination..."
 					/>
+					{destCoords ? (
+						<View style={styles.selectedPlaceBadge}>
+							<Text style={styles.selectedPlaceText}>
+								📍 {destCoords.lat.toFixed(4)}, {destCoords.lon.toFixed(4)}
+							</Text>
+						</View>
+					) : null}
 				</RideCard>
 
 				<RideCard
 					title="Live map"
-					subtitle={locationPermission === 'denied' ? 'Permission required' : 'Customer location'}
+					subtitle={locationPermission === 'denied' ? 'Permission required' : routeCoordinates.length > 0 ? 'Route preview' : 'Customer location'}
 				>
 					<View style={styles.mapFrame}>
-						<MapView style={styles.map} region={mapRegion}>
+						<MapView ref={mapRef} style={styles.map} region={mapRegion}>
 							{customerLocation ? (
-								<Marker coordinate={customerLocation} title="You are here" description="Customer location" />
+								<Marker coordinate={customerLocation} title="You are here" description="Customer location" pinColor="#111827" />
+							) : null}
+
+							{destCoords ? (
+								<Marker
+									coordinate={{ latitude: destCoords.lat, longitude: destCoords.lon }}
+									title="Destination"
+									description={destination}
+									pinColor="#DC2626"
+								/>
+							) : null}
+
+							{routeCoordinates.length > 0 ? (
+								<Polyline
+									coordinates={routeCoordinates}
+									strokeColor="#3B82F6"
+									strokeWidth={4}
+									lineDashPattern={[0]}
+								/>
 							) : null}
 						</MapView>
 						{locationPermission === 'denied' ? (
@@ -208,7 +319,7 @@ const styles = StyleSheet.create({
 	},
 	mapFrame: {
 		marginTop: 10,
-		height: 230,
+		height: 280,
 		borderRadius: 18,
 		overflow: 'hidden',
 		backgroundColor: '#E2E8F0',
@@ -254,5 +365,17 @@ const styles = StyleSheet.create({
 		lineHeight: 22,
 		fontWeight: '600',
 		color: '#0F172A',
+	},
+	selectedPlaceBadge: {
+		marginTop: 8,
+		backgroundColor: '#EFF6FF',
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderRadius: 12,
+	},
+	selectedPlaceText: {
+		fontSize: 13,
+		color: '#1D4ED8',
+		fontWeight: '600',
 	},
 });

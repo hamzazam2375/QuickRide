@@ -8,6 +8,7 @@ const STATUS_THEME = {
 	[RIDE_STATUSES.ARRIVING]: { backgroundColor: '#EDE9FE', color: '#6D28D9' },
 	[RIDE_STATUSES.IN_PROGRESS]: { backgroundColor: '#DCFCE7', color: '#166534' },
 	[RIDE_STATUSES.COMPLETED]: { backgroundColor: '#D1FAE5', color: '#065F46' },
+	[RIDE_STATUSES.PAYMENT_PENDING]: { backgroundColor: '#FFF7ED', color: '#C2410C' },
 	[RIDE_STATUSES.PAID]: { backgroundColor: '#E0E7FF', color: '#3730A3' },
 };
 

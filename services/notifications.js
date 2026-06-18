@@ -1,46 +1,60 @@
-import Constants from 'expo-constants';
-
-const isExpoGo =
-	Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
+import { Alert, Linking, Platform } from 'react-native';
 
 let Notifications = null;
 
-if (!isExpoGo) {
-	try {
-		Notifications = require('expo-notifications');
-		Notifications.setNotificationHandler({
-			handleNotification: async () => ({
-				shouldShowAlert: true,
-				shouldPlaySound: false,
-				shouldSetBadge: false,
-			}),
-		});
-	} catch {
-		Notifications = null;
-	}
+try {
+	Notifications = require('expo-notifications');
+	Notifications.setNotificationHandler({
+		handleNotification: async () => ({
+			shouldShowAlert: true,
+			shouldPlaySound: false,
+			shouldSetBadge: false,
+		}),
+	});
+} catch {
+	Notifications = null;
 }
 
-let permissionPromise = null;
-
+/**
+ * Request notification permissions.
+ * Re-checks every time it is called (no caching) so that restarts
+ * can detect when a user has changed their mind in Settings.
+ * If the user permanently denied permissions, shows an Alert
+ * prompting them to open Settings.
+ */
 async function ensureNotificationPermissions() {
-	if (!Notifications || isExpoGo) {
+	if (!Notifications) {
 		return false;
 	}
 
-	if (!permissionPromise) {
-		permissionPromise = (async () => {
-			const existingPermissions = await Notifications.getPermissionsAsync();
+	const existingPermissions = await Notifications.getPermissionsAsync();
 
-			if (existingPermissions.granted || existingPermissions.status === 'granted') {
-				return true;
-			}
-
-			const requestedPermissions = await Notifications.requestPermissionsAsync();
-			return requestedPermissions.granted || requestedPermissions.status === 'granted';
-		})();
+	if (existingPermissions.granted || existingPermissions.status === 'granted') {
+		return true;
 	}
 
-	return permissionPromise;
+	const requestedPermissions = await Notifications.requestPermissionsAsync();
+
+	if (requestedPermissions.granted || requestedPermissions.status === 'granted') {
+		return true;
+	}
+
+	// Cannot ask again — prompt user to open Settings.
+	if (!requestedPermissions.canAskAgain) {
+		Alert.alert(
+			'Notification Permission Required',
+			'QuickRide needs notifications to keep you updated about ride status changes. Please enable notifications in Settings.',
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Open Settings',
+					onPress: () => Linking.openSettings(),
+				},
+			],
+		);
+	}
+
+	return false;
 }
 
 export async function configureNotifications() {
@@ -59,7 +73,9 @@ async function sendLocalNotification(title, body) {
 			title,
 			body,
 		},
-		trigger: null,
+		trigger: Platform.OS === 'android'
+			? { type: 'timeInterval', seconds: 1, repeats: false }
+			: null,
 	});
 
 	return true;

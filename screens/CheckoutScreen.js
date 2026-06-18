@@ -12,13 +12,14 @@ const FLOW_STEPS = [
 	RIDE_STATUSES.ARRIVING,
 	RIDE_STATUSES.IN_PROGRESS,
 	RIDE_STATUSES.COMPLETED,
+	RIDE_STATUSES.PAYMENT_PENDING,
 	RIDE_STATUSES.PAID,
 ];
 
 const MOCK_FARE = 18.75;
 
 export default function CheckoutScreen({ navigation }) {
-	const { currentRide, rideStatus, pickupLocation, destination, markPaid } = useRide();
+	const { currentRide, rideStatus, pickupLocation, destination, markPaid, initiatePayment, userRole } = useRide();
 	const [paymentCompleted, setPaymentCompleted] = useState(rideStatus === RIDE_STATUSES.PAID);
 
 	const rideSummary = useMemo(() => {
@@ -36,9 +37,19 @@ export default function CheckoutScreen({ navigation }) {
 	}, [currentRide, pickupLocation, destination]);
 
 	const currentStepIndex = FLOW_STEPS.indexOf(rideStatus);
-	const canProceedToPayment = rideStatus === RIDE_STATUSES.COMPLETED && !paymentCompleted;
 
-	const handleProceedToPayment = () => {
+	// Customer: can press PAY NOW when ride is Completed
+	const canCustomerPay = userRole === 'customer' && rideStatus === RIDE_STATUSES.COMPLETED;
+	// Customer sees "waiting" when PaymentPending
+	const isWaitingForDriver = userRole === 'customer' && rideStatus === RIDE_STATUSES.PAYMENT_PENDING;
+	// Driver: can complete payment when PaymentPending
+	const canDriverCompletePay = userRole === 'driver' && rideStatus === RIDE_STATUSES.PAYMENT_PENDING;
+
+	const handleCustomerPay = () => {
+		initiatePayment();
+	};
+
+	const handleDriverCompletePay = () => {
 		markPaid();
 		setPaymentCompleted(true);
 	};
@@ -74,7 +85,7 @@ export default function CheckoutScreen({ navigation }) {
 					</View>
 				</RideCard>
 
-				<RideCard title="Ride flow" subtitle="Requested → Accepted → Arriving → InProgress → Completed → Paid" rightElement={<StatusBadge status={rideStatus} />}>
+				<RideCard title="Ride progress" rightElement={<StatusBadge status={rideStatus} />}>
 					<View style={styles.flowContainer}>
 						{FLOW_STEPS.map((step, index) => {
 							const isActive = index <= currentStepIndex;
@@ -83,27 +94,51 @@ export default function CheckoutScreen({ navigation }) {
 							return (
 								<View key={step} style={styles.flowRow}>
 									<View style={[styles.flowDot, isActive && styles.flowDotActive, isCurrent && styles.flowDotCurrent]} />
-									<View style={styles.flowTextBlock}>
-										<Text style={[styles.flowLabel, isActive && styles.flowLabelActive]}>{step}</Text>
-										{index < FLOW_STEPS.length - 1 ? <View style={styles.flowLine} /> : null}
-									</View>
+									<Text style={[styles.flowLabel, isActive && styles.flowLabelActive]}>
+										{step}
+										{isCurrent ? '  ●' : ''}
+									</Text>
 								</View>
 							);
 						})}
 					</View>
 				</RideCard>
 
-				{canProceedToPayment ? (
-					<ActionButton label="Proceed to Payment" onPress={handleProceedToPayment} />
+				{/* Customer: PAY NOW button when ride is Completed */}
+				{canCustomerPay ? (
+					<ActionButton label="PAY NOW" onPress={handleCustomerPay} />
 				) : null}
 
-				{paymentCompleted ? (
+				{/* Customer: Waiting for driver confirmation when PaymentPending */}
+				{isWaitingForDriver ? (
+					<RideCard title="Payment Submitted">
+						<View style={styles.pendingContainer}>
+							<Text style={styles.pendingIcon}>⏳</Text>
+							<Text style={styles.pendingText}>Waiting for driver confirmation...</Text>
+							<Text style={styles.pendingSubtext}>Your payment is being processed. The driver will confirm it shortly.</Text>
+						</View>
+					</RideCard>
+				) : null}
+
+				{/* Driver: Complete Payment button when PaymentPending */}
+				{canDriverCompletePay ? (
+					<RideCard title="Payment Confirmation" subtitle="The customer has submitted payment.">
+						<Text style={styles.pendingDriverText}>
+							The customer has paid ${MOCK_FARE.toFixed(2)}. Confirm to complete the transaction.
+						</Text>
+					</RideCard>
+				) : null}
+				{canDriverCompletePay ? (
+					<ActionButton label="Complete Payment" onPress={handleDriverCompletePay} />
+				) : null}
+
+				{rideStatus === RIDE_STATUSES.PAID || paymentCompleted ? (
 					<RideCard title="Payment Successful" subtitle="Your payment has been processed successfully.">
 						<Text style={styles.successText}>Thank you for riding with QuickRide.</Text>
 					</RideCard>
 				) : null}
 
-				{paymentCompleted ? (
+				{rideStatus === RIDE_STATUSES.PAID || paymentCompleted ? (
 					<ActionButton label="Return to Dashboard" onPress={handleReturnToDashboard} />
 				) : null}
 			</ScrollView>
@@ -154,13 +189,19 @@ const styles = StyleSheet.create({
 	summaryBlock: {
 		marginTop: 14,
 	},
+	rowBetween: {
+		marginTop: 14,
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+	},
 	flowContainer: {
 		marginTop: 14,
 		gap: 10,
 	},
 	flowRow: {
 		flexDirection: 'row',
-		alignItems: 'flex-start',
+		alignItems: 'center',
 		gap: 12,
 	},
 	flowDot: {
@@ -168,17 +209,12 @@ const styles = StyleSheet.create({
 		height: 12,
 		borderRadius: 999,
 		backgroundColor: '#CBD5E1',
-		marginTop: 4,
 	},
 	flowDotActive: {
 		backgroundColor: '#111827',
 	},
 	flowDotCurrent: {
 		transform: [{ scale: 1.15 }],
-	},
-	flowTextBlock: {
-		flex: 1,
-		paddingBottom: 8,
 	},
 	flowLabel: {
 		fontSize: 14,
@@ -187,11 +223,6 @@ const styles = StyleSheet.create({
 	},
 	flowLabelActive: {
 		color: '#0F172A',
-	},
-	flowLine: {
-		marginTop: 10,
-		height: 1,
-		backgroundColor: '#E2E8F0',
 	},
 	fareAmount: {
 		fontSize: 22,
@@ -202,5 +233,32 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		lineHeight: 22,
 		color: '#64748B',
+	},
+	pendingContainer: {
+		alignItems: 'center',
+		paddingVertical: 12,
+	},
+	pendingIcon: {
+		fontSize: 32,
+		marginBottom: 8,
+	},
+	pendingText: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#C2410C',
+		textAlign: 'center',
+	},
+	pendingSubtext: {
+		marginTop: 6,
+		fontSize: 14,
+		lineHeight: 20,
+		color: '#64748B',
+		textAlign: 'center',
+	},
+	pendingDriverText: {
+		marginTop: 8,
+		fontSize: 14,
+		lineHeight: 22,
+		color: '#0F172A',
 	},
 });

@@ -1,7 +1,20 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRide } from '../context/RideContext';
 
 export default function RoleSelectionScreen({ navigation }) {
+	const { setUserRole } = useRide();
+
+	const handleCustomer = () => {
+		setUserRole('customer');
+		navigation.navigate('CustomerDashboard');
+	};
+
+	const handleDriver = () => {
+		setUserRole('driver');
+		navigation.navigate('DriverDashboard');
+	};
+
 	return (
 		<SafeAreaView style={styles.safeArea}>
 			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -14,14 +27,14 @@ export default function RoleSelectionScreen({ navigation }) {
 
 				<View style={styles.card}>
 					<Pressable
-						onPress={() => navigation.navigate('CustomerDashboard')}
+						onPress={handleCustomer}
 						style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
 					>
 						<Text style={styles.primaryButtonText}>Continue as Customer</Text>
 					</Pressable>
 
 					<Pressable
-						onPress={() => navigation.navigate('DriverDashboard')}
+						onPress={handleDriver}
 						style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
 					>
 						<Text style={styles.secondaryButtonText}>Continue as Driver</Text>

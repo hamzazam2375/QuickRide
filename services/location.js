@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { Alert, Linking } from 'react-native';
 
 export const DEFAULT_LOCATION_REGION = {
 	latitude: 37.78825,
@@ -7,10 +8,43 @@ export const DEFAULT_LOCATION_REGION = {
 	longitudeDelta: 0.02,
 };
 
+/**
+ * Request foreground location permission.
+ * If the user previously denied the permission, show an alert prompting
+ * them to open device Settings so they can grant it manually.
+ * This runs on every mount so denied permissions are re-prompted each restart.
+ */
 export async function requestForegroundLocationPermission() {
-	const permission = await Location.requestForegroundPermissionsAsync();
+	const existing = await Location.getForegroundPermissionsAsync();
 
-	return permission.status === 'granted';
+	// Already granted — nothing to do.
+	if (existing.status === 'granted') {
+		return true;
+	}
+
+	// Try requesting normally (works on first ask or when "Ask Every Time" is set).
+	const requested = await Location.requestForegroundPermissionsAsync();
+
+	if (requested.status === 'granted') {
+		return true;
+	}
+
+	// Permission denied and cannot ask again — prompt user to open Settings.
+	if (!requested.canAskAgain) {
+		Alert.alert(
+			'Location Permission Required',
+			'QuickRide needs access to your location to show your position on the map and calculate routes. Please enable location access in Settings.',
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Open Settings',
+					onPress: () => Linking.openSettings(),
+				},
+			],
+		);
+	}
+
+	return false;
 }
 
 export async function getCurrentDeviceCoordinates() {
