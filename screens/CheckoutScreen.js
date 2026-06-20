@@ -19,7 +19,7 @@ const FLOW_STEPS = [
 const MOCK_FARE = 18.75;
 
 export default function CheckoutScreen({ navigation }) {
-	const { currentRide, rideStatus, pickupLocation, destination, markPaid, initiatePayment, userRole } = useRide();
+	const { currentRide, rideStatus, pickupLocation, destination, markPaid, resetRide, initiatePayment, userRole } = useRide();
 	const [paymentCompleted, setPaymentCompleted] = useState(rideStatus === RIDE_STATUSES.PAID);
 
 	const rideSummary = useMemo(() => {
@@ -49,9 +49,10 @@ export default function CheckoutScreen({ navigation }) {
 		initiatePayment();
 	};
 
-	const handleDriverCompletePay = () => {
+	const handleDriverMarkPaid = () => {
 		markPaid();
-		setPaymentCompleted(true);
+		resetRide();
+		navigation.goBack();
 	};
 
 	const handleReturnToDashboard = () => {
@@ -120,7 +121,7 @@ export default function CheckoutScreen({ navigation }) {
 					</RideCard>
 				) : null}
 
-				{/* Driver: Complete Payment button when PaymentPending */}
+				{/* Driver: Mark Paid button — marks paid, resets ride, and navigates back */}
 				{canDriverCompletePay ? (
 					<RideCard title="Payment Confirmation" subtitle="The customer has submitted payment.">
 						<Text style={styles.pendingDriverText}>
@@ -129,16 +130,22 @@ export default function CheckoutScreen({ navigation }) {
 					</RideCard>
 				) : null}
 				{canDriverCompletePay ? (
-					<ActionButton label="Complete Payment" onPress={handleDriverCompletePay} />
+					<ActionButton label="Mark Paid" onPress={handleDriverMarkPaid} />
 				) : null}
 
-				{rideStatus === RIDE_STATUSES.PAID || paymentCompleted ? (
+				{/* Driver: Ride completed but not yet payment pending */}
+				{userRole === 'driver' && rideStatus === RIDE_STATUSES.COMPLETED ? (
+					<RideCard title="Ride Completed" subtitle="Waiting for customer to submit payment." />
+				) : null}
+
+				{/* Customer: Payment success view */}
+				{userRole === 'customer' && (rideStatus === RIDE_STATUSES.PAID || paymentCompleted) ? (
 					<RideCard title="Payment Successful" subtitle="Your payment has been processed successfully.">
 						<Text style={styles.successText}>Thank you for riding with QuickRide.</Text>
 					</RideCard>
 				) : null}
 
-				{rideStatus === RIDE_STATUSES.PAID || paymentCompleted ? (
+				{userRole === 'customer' && (rideStatus === RIDE_STATUSES.PAID || paymentCompleted) ? (
 					<ActionButton label="Return to Dashboard" onPress={handleReturnToDashboard} />
 				) : null}
 			</ScrollView>
@@ -154,7 +161,7 @@ const styles = StyleSheet.create({
 	container: {
 		flexGrow: 1,
 		paddingHorizontal: 20,
-		paddingTop: 16,
+		paddingTop: 4,
 		paddingBottom: 24,
 		gap: 16,
 	},

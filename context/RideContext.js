@@ -96,6 +96,14 @@ export function RideProvider({ children }) {
 		sendPaymentSuccessNotification().catch(() => undefined);
 	};
 
+	const resetRide = () => {
+		setCurrentRide(null);
+		setRideStatus(RIDE_STATUSES.IDLE);
+		setPickupLocation('');
+		setDestination('');
+		setDestinationCoords(null);
+	};
+
 	const value = useMemo(
 		() => ({
 			currentRide,
@@ -112,6 +120,7 @@ export function RideProvider({ children }) {
 			completeRide,
 			initiatePayment,
 			markPaid,
+			resetRide,
 			setCurrentRide,
 			setRideStatus,
 			setCustomerLocation,

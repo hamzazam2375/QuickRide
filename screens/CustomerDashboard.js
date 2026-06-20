@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
@@ -20,6 +20,7 @@ export default function CustomerDashboard({ navigation }) {
 		customerLocation,
 		setCustomerLocation,
 		requestRide,
+		resetRide,
 		currentRide,
 		pickupLocation: storedPickupLocation,
 		destination: storedDestination,
@@ -150,7 +151,9 @@ export default function CustomerDashboard({ navigation }) {
 
 	const isPickupValid = pickupLocation.trim().length > 0;
 	const isDestinationValid = destination.trim().length > 0;
-	const bookButtonDisabled = rideStatus !== RIDE_STATUSES.IDLE || !isPickupValid || !isDestinationValid;
+	const isRideFinished = rideStatus === RIDE_STATUSES.PAID;
+	const showCheckout = rideStatus !== RIDE_STATUSES.IDLE && rideStatus !== RIDE_STATUSES.PAID;
+	const bookButtonDisabled = !isRideFinished && (rideStatus !== RIDE_STATUSES.IDLE || !isPickupValid || !isDestinationValid);
 
 	const handlePlaceSelected = useCallback(
 		(place) => {
@@ -175,6 +178,16 @@ export default function CustomerDashboard({ navigation }) {
 			return;
 		}
 
+		if (isRideFinished) {
+			resetRide();
+			setPickupLocation('');
+			setDestination('');
+			setDestCoords(null);
+			setRouteCoordinates([]);
+			setIsPickupEdited(false);
+			return;
+		}
+
 		requestRide(pickupLocation.trim(), destination.trim(), destCoords);
 		navigation.navigate('Checkout');
 	};
@@ -184,7 +197,14 @@ export default function CustomerDashboard({ navigation }) {
 			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Customer Dashboard</Text>
-					<Text style={styles.subtitle}>Track your position, review your ride state, and start a new booking.</Text>
+					<View style={styles.subtitleRow}>
+						<Text style={styles.subtitle}>Track your position, review your ride state, and start a new booking.</Text>
+						{showCheckout ? (
+							<TouchableOpacity style={styles.checkoutBtn} onPress={() => navigation.navigate('Checkout')}>
+								<Text style={styles.checkoutBtnText}>Checkout →</Text>
+							</TouchableOpacity>
+						) : null}
+					</View>
 				</View>
 
 					<RideCard
@@ -275,7 +295,7 @@ export default function CustomerDashboard({ navigation }) {
 				</RideCard>
 
 				<ActionButton
-					label={bookButtonDisabled ? 'Ride already requested' : 'Book Ride'}
+					label={isRideFinished ? 'Book another ride' : bookButtonDisabled ? 'Ride already requested' : 'Book Ride'}
 					onPress={handleBookRide}
 					disabled={bookButtonDisabled}
 				/>
@@ -292,12 +312,29 @@ const styles = StyleSheet.create({
 	container: {
 		flexGrow: 1,
 		paddingHorizontal: 20,
-		paddingTop: 16,
+		paddingTop: 4,
 		paddingBottom: 24,
 		gap: 16,
 	},
 	headerCard: {
 		paddingHorizontal: 4,
+	},
+	subtitleRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginTop: 10,
+		gap: 10,
+	},
+	checkoutBtn: {
+		backgroundColor: '#111827',
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderRadius: 20,
+	},
+	checkoutBtnText: {
+		fontSize: 13,
+		fontWeight: '700',
+		color: '#FFFFFF',
 	},
 	title: {
 		fontSize: 32,
@@ -307,7 +344,7 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.8,
 	},
 	subtitle: {
-		marginTop: 10,
+		flex: 1,
 		fontSize: 16,
 		lineHeight: 24,
 		color: '#64748B',

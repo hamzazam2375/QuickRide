@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionButton from '../components/ActionButton';
@@ -22,6 +22,7 @@ export default function DriverDashboard({ navigation }) {
 		acceptRide,
 		startRide,
 		completeRide,
+		resetRide,
 		destination,
 		pickupLocation,
 		destinationCoords,
@@ -155,13 +156,21 @@ export default function DriverDashboard({ navigation }) {
 					: null;
 
 	const hasRideInfo = rideStatus !== RIDE_STATUSES.IDLE && (pickupLocation || destination);
+	const showCheckout = rideStatus !== RIDE_STATUSES.IDLE && rideStatus !== RIDE_STATUSES.PAID;
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
 			<ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 				<View style={styles.headerCard}>
 					<Text style={styles.title}>Driver Dashboard</Text>
-					<Text style={styles.subtitle}>Monitor your position and manage the current ride from one place.</Text>
+					<View style={styles.subtitleRow}>
+						<Text style={styles.subtitle}>Monitor your position and manage the current ride from one place.</Text>
+						{showCheckout ? (
+							<TouchableOpacity style={styles.checkoutBtn} onPress={() => navigation.navigate('Checkout')}>
+								<Text style={styles.checkoutBtnText}>Checkout →</Text>
+							</TouchableOpacity>
+						) : null}
+					</View>
 				</View>
 
 				<RideCard title="Current ride status" rightElement={<StatusBadge status={rideStatus} />}>
@@ -272,12 +281,29 @@ const styles = StyleSheet.create({
 	container: {
 		flexGrow: 1,
 		paddingHorizontal: 20,
-		paddingTop: 16,
+		paddingTop: 4,
 		paddingBottom: 24,
 		gap: 16,
 	},
 	headerCard: {
 		paddingHorizontal: 4,
+	},
+	subtitleRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginTop: 10,
+		gap: 10,
+	},
+	checkoutBtn: {
+		backgroundColor: '#111827',
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderRadius: 20,
+	},
+	checkoutBtnText: {
+		fontSize: 13,
+		fontWeight: '700',
+		color: '#FFFFFF',
 	},
 	title: {
 		fontSize: 32,
@@ -287,7 +313,7 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.8,
 	},
 	subtitle: {
-		marginTop: 10,
+		flex: 1,
 		fontSize: 16,
 		lineHeight: 24,
 		color: '#64748B',
